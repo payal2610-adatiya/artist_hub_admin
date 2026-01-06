@@ -135,23 +135,100 @@ class AdminApiService {
   }
 
   // Approve Artist
+  // Approve Artist - Updated with proper API endpoint
   static Future<ApiResponse> approveArtist(int artistId) async {
     try {
+      print('Approving artist ID: $artistId'); // Debug log
+
       final response = await http.post(
         Uri.parse('$baseUrl/artist_aproval.php'),
-        body: {'artist_id': artistId.toString()},
+        body: {
+          'artist_id': artistId.toString(),
+        },
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
       );
 
-      return ApiResponse.fromJson(json.decode(response.body));
+      print('Response status: ${response.statusCode}'); // Debug log
+      print('Response body: ${response.body}'); // Debug log
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+
+        // Handle different response formats
+        if (data.containsKey('status')) {
+          return ApiResponse(
+            status: data['status'] == true || data['status'] == 'true',
+            message: data['message']?.toString() ??
+                (data['status'] == true ? 'Artist approved successfully' : 'Approval failed'),
+            data: data['data'] ?? data,
+          );
+        } else if (data.containsKey('success')) {
+          return ApiResponse(
+            status: data['success'] == true || data['success'] == 'true',
+            message: data['message']?.toString() ??
+                (data['success'] == true ? 'Artist approved successfully' : 'Approval failed'),
+            data: data['data'] ?? data,
+          );
+        } else {
+          return ApiResponse(
+            status: false,
+            message: 'Invalid response format from server',
+            data: null,
+          );
+        }
+      } else {
+        return ApiResponse(
+          status: false,
+          message: 'Server error: ${response.statusCode}',
+          data: null,
+        );
+      }
     } catch (e) {
+      print('Error approving artist: $e'); // Debug log
       return ApiResponse(
         status: false,
-        message: 'Error: $e',
+        message: 'Connection error: $e',
         data: null,
       );
     }
   }
+  // Add a method to check artist approval status
+  static Future<ApiResponse> checkArtistApprovalStatus(int artistId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/artist_details.php?artist_id=$artistId'),
+      );
 
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+
+        if (data['status'] == true && data['data'] != null) {
+          final artistData = data['data'];
+          final isApproved = artistData['is_approved'] == 1 || artistData['is_approved'] == true;
+
+          return ApiResponse(
+            status: isApproved,
+            message: isApproved ? 'Artist is approved' : 'Artist is not approved yet',
+            data: artistData,
+          );
+        }
+      }
+
+      return ApiResponse(
+        status: false,
+        message: 'Failed to check approval status',
+        data: null,
+      );
+    } catch (e) {
+      return ApiResponse(
+        status: false,
+        message: 'Connection error: $e',
+        data: null,
+      );
+    }
+  }
   // Get Dashboard Stats
 
   // Get Artist Details with Profile

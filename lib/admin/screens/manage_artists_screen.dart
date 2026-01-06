@@ -1,4 +1,4 @@
-// lib/admin/screens/manage_artists_screen.dart - Fixed version
+// lib/admin/screens/manage_artists_screen.dart - Updated approval process
 import 'package:flutter/material.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/helpers.dart';
@@ -21,6 +21,7 @@ class _ManageArtistsScreenState extends State<ManageArtistsScreen>
   bool _isLoading = true;
   String _searchQuery = '';
   String _selectedCategory = 'All';
+  Map<int, bool> _approvingArtists = {}; // Track which artists are being approved
 
   @override
   void initState() {
@@ -31,6 +32,7 @@ class _ManageArtistsScreenState extends State<ManageArtistsScreen>
 
   Future<void> _loadArtists() async {
     setState(() => _isLoading = true);
+    _approvingArtists.clear();
 
     try {
       final [approved, pending] = await Future.wait([
@@ -50,14 +52,31 @@ class _ManageArtistsScreenState extends State<ManageArtistsScreen>
     }
   }
 
-  // ADD THIS MISSING METHOD
-  Future<void> _approveArtist(int artistId) async {
-    // Show confirmation dialog
+  Future<void> _approveArtist(int artistId, String artistName) async {
+    // Show confirmation dialog with important info
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Approve Artist'),
-        content: const Text('Are you sure you want to approve this artist?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Are you sure you want to approve $artistName?'),
+            const SizedBox(height: 10),
+            const Text(
+              'IMPORTANT:',
+              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+            ),
+            const SizedBox(height: 5),
+            const Text(
+              '• Artist will be able to login immediately\n'
+                  '• Artist will appear in customer searches\n'
+                  '• Artist can start receiving bookings',
+              style: TextStyle(fontSize: 12),
+            ),
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -65,7 +84,9 @@ class _ManageArtistsScreenState extends State<ManageArtistsScreen>
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.successColor),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.successColor,
+            ),
             child: const Text('Approve', style: TextStyle(color: Colors.white)),
           ),
         ],
@@ -74,22 +95,34 @@ class _ManageArtistsScreenState extends State<ManageArtistsScreen>
 
     if (confirmed != true) return;
 
-    // Show loading
-    setState(() => _isLoading = true);
+    // Mark this artist as being approved
+    setState(() {
+      _approvingArtists[artistId] = true;
+    });
 
     try {
       final response = await AdminApiService.approveArtist(artistId);
 
-      setState(() => _isLoading = false);
+      setState(() {
+        _approvingArtists.remove(artistId);
+      });
 
       if (response.status) {
-        _showSuccessSnackbar(response.message);
-        await _loadArtists(); // Refresh the list
+        _showSuccessSnackbar('✅ $artistName has been approved!\nThey can now login to their account.');
+
+        // Refresh the list after a short delay
+        await Future.delayed(const Duration(milliseconds: 500));
+        await _loadArtists();
+
+        // Switch to approved tab to show the newly approved artist
+        _tabController.animateTo(0);
       } else {
-        _showErrorSnackbar(response.message);
+        _showErrorSnackbar('Failed to approve: ${response.message}');
       }
     } catch (e) {
-      setState(() => _isLoading = false);
+      setState(() {
+        _approvingArtists.remove(artistId);
+      });
       _showErrorSnackbar('Error: $e');
     }
   }
@@ -99,7 +132,14 @@ class _ManageArtistsScreenState extends State<ManageArtistsScreen>
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Artist'),
-        content: const Text('Are you sure you want to delete this artist? This action cannot be undone.'),
+        content: const Text(
+          'Are you sure you want to delete this artist?\n'
+              'This will:'
+              '\n• Remove their profile permanently'
+              '\n• Cancel all their bookings'
+              '\n• Delete their portfolio'
+              '\nThis action cannot be undone!',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -142,46 +182,125 @@ class _ManageArtistsScreenState extends State<ManageArtistsScreen>
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(artistToShow.name),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _detailItem('Email', artistToShow.email),
-              _detailItem('Phone', artistToShow.phone),
-              _detailItem('Address', artistToShow.address),
-              if (artistToShow.category != null)
-                _detailItem('Category', artistToShow.category!),
-              if (artistToShow.experience != null)
-                _detailItem('Experience', artistToShow.experience!),
-              if (artistToShow.price != null && artistToShow.price! > 0)
-                _detailItem('Price', Helpers.formatCurrency(artistToShow.price!)),
-              if (artistToShow.description != null && artistToShow.description!.isNotEmpty)
-                _detailItem('Description', artistToShow.description!),
-              _detailItem('Rating', '${artistToShow.avgRating?.toStringAsFixed(1) ?? '0.0'} ⭐ (${artistToShow.totalReviews ?? 0} reviews)'),
-              _detailItem('Status', artistToShow.isApproved ? 'Approved' : 'Pending'),
-              _detailItem('Active', artistToShow.isActive ? 'Yes' : 'No'),
-              _detailItem('Joined', Helpers.formatDate(artistToShow.createdAt)),
-            ],
-          ),
-        ),
-        actions: [
-          if (!artistToShow.isApproved)
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _approveArtist(artistToShow.id); // FIXED: Changed approveArtist to _approveArtist
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.successColor),
-              child: const Text('Approve', style: TextStyle(color: Colors.white)),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: AppColors.primaryColor,
+                  child: Text(
+                    artistToShow.name[0].toUpperCase(),
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    artistToShow.name,
+                    style: const TextStyle(fontSize: 18),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _detailItem('Email', artistToShow.email),
+                  _detailItem('Phone', artistToShow.phone),
+                  _detailItem('Address', artistToShow.address),
+                  if (artistToShow.category != null)
+                    _detailItem('Category', artistToShow.category!),
+                  if (artistToShow.experience != null)
+                    _detailItem('Experience', artistToShow.experience!),
+                  if (artistToShow.price != null && artistToShow.price! > 0)
+                    _detailItem('Price', Helpers.formatCurrency(artistToShow.price!)),
+                  if (artistToShow.description != null && artistToShow.description!.isNotEmpty)
+                    _detailItem('Description', artistToShow.description!),
+                  _detailItem('Rating', '${artistToShow.avgRating?.toStringAsFixed(1) ?? '0.0'} ⭐ (${artistToShow.totalReviews ?? 0} reviews)'),
+                  _detailItem('Status', artistToShow.isApproved ? '✅ Approved' : '⏳ Pending Approval'),
+                  _detailItem('Active', artistToShow.isActive ? '✅ Yes' : '❌ No'),
+                  _detailItem('Joined', Helpers.formatDate(artistToShow.createdAt)),
+
+                  // Approval status note
+                  if (!artistToShow.isApproved) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.warningColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppColors.warningColor),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Pending Approval',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.warningColor,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            'This artist cannot login until approved.',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                          const SizedBox(height: 8),
+                          if (_approvingArtists[artistToShow.id] == true)
+                            const Row(
+                              children: [
+                                SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                                SizedBox(width: 8),
+                                Text('Approving...', style: TextStyle(fontSize: 12)),
+                              ],
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              if (!artistToShow.isApproved)
+                ElevatedButton(
+                  onPressed: _approvingArtists[artistToShow.id] == true
+                      ? null
+                      : () {
+                    Navigator.pop(context);
+                    _approveArtist(artistToShow.id, artistToShow.name);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.successColor,
+                    disabledBackgroundColor: AppColors.successColor.withOpacity(0.5),
+                  ),
+                  child: _approvingArtists[artistToShow.id] == true
+                      ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                      : const Text('Approve Now', style: TextStyle(color: Colors.white)),
+                ),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -213,6 +332,7 @@ class _ManageArtistsScreenState extends State<ManageArtistsScreen>
       SnackBar(
         content: Text(message),
         backgroundColor: AppColors.successColor,
+        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -222,6 +342,7 @@ class _ManageArtistsScreenState extends State<ManageArtistsScreen>
       SnackBar(
         content: Text(message),
         backgroundColor: AppColors.errorColor,
+        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -357,7 +478,7 @@ class _ManageArtistsScreenState extends State<ManageArtistsScreen>
             });
           },
           tabs: const [
-            Tab(text: 'Approved Artists',),
+            Tab(text: 'Approved Artists'),
             Tab(text: 'Pending Approval'),
           ],
         ),
@@ -440,9 +561,12 @@ class _ManageArtistsScreenState extends State<ManageArtistsScreen>
                         rating: 0.0,
                         earnings: 0.0,
                         isPending: true,
-                        onApprove: () => _approveArtist(artist.id),
+                        onApprove: _approvingArtists[artist.id] == true
+                            ? null
+                            : () => _approveArtist(artist.id, artist.name),
                         onViewDetails: () => _showArtistDetails(artist),
                         onDelete: () => _deleteArtist(artist.id),
+                        isApproving: _approvingArtists[artist.id] == true,
                       );
                     },
                   ),
@@ -452,7 +576,6 @@ class _ManageArtistsScreenState extends State<ManageArtistsScreen>
           ),
         ],
       ),
-
     );
   }
 }

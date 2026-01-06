@@ -1,4 +1,4 @@
-// lib/admin/widgets/artist_card.dart - Add delete functionality
+// lib/admin/widgets/artist_card.dart - Updated with loading state
 import 'package:flutter/material.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/helpers.dart';
@@ -12,6 +12,7 @@ class ArtistCard extends StatelessWidget {
   final VoidCallback? onApprove;
   final VoidCallback? onViewDetails;
   final VoidCallback? onDelete;
+  final bool isApproving; // NEW: Add this parameter
 
   const ArtistCard({
     Key? key,
@@ -23,6 +24,7 @@ class ArtistCard extends StatelessWidget {
     this.onApprove,
     this.onViewDetails,
     this.onDelete,
+    this.isApproving = false, // NEW: Default to false
   }) : super(key: key);
 
   @override
@@ -80,13 +82,29 @@ class ArtistCard extends StatelessWidget {
                       color: AppColors.warningColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    child: Text(
-                      'Pending',
-                      style: TextStyle(
-                        color: AppColors.warningColor,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    child: Row(
+                      children: [
+                        if (isApproving)
+                          SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(AppColors.warningColor),
+                            ),
+                          )
+                        else
+                          Icon(Icons.pending, size: 12, color: AppColors.warningColor),
+                        const SizedBox(width: 4),
+                        Text(
+                          isApproving ? 'Approving...' : 'Pending',
+                          style: TextStyle(
+                            color: AppColors.warningColor,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
               ],
@@ -128,14 +146,23 @@ class ArtistCard extends StatelessWidget {
                 if (isPending && onApprove != null)
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: onApprove,
+                      onPressed: isApproving ? null : onApprove,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.successColor,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
                       ),
-                      child: const Text(
+                      child: isApproving
+                          ? SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                          : const Text(
                         'Approve',
                         style: TextStyle(color: Colors.white),
                       ),
