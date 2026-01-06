@@ -62,13 +62,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 60),
-              // Center(
-              //   child: Image.asset(
-              //     'assets/logo.png', // Add your logo asset
-              //     height: 100,
-              //     width: 100,
-              //   ),
-              // ),
+
               const Text(
                 'Admin Login',
                 style: TextStyle(
